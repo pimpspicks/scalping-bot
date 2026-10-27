@@ -6,7 +6,7 @@ from pathlib import Path
 
 import joblib
 
-from . import backtest, history, live, pine
+from . import backtest, candles, history, live, pine, swing
 from .config import COST_BPS, DATA_DIR, DEFAULT_EXCHANGE, SYMBOLS
 
 EXCHANGES = ["phemex", "binance", "binanceus", "coinbase"]
@@ -26,6 +26,17 @@ def main():
     d = sub.add_parser("download", help="fetch historical Binance aggTrades (no order book)")
     d.add_argument("--symbols", nargs="+", default=SYMBOLS)
     d.add_argument("--days", type=int, default=3)
+
+    dc = sub.add_parser("download-candles", help="fetch Phemex 1-minute candles + funding history")
+    dc.add_argument("--symbols", nargs="+", default=SYMBOLS)
+    dc.add_argument("--days", type=int, default=365)
+
+    sw = sub.add_parser("swing", help="walk-forward swing-trade backtest (minutes to hours) on Phemex candles")
+    sw.add_argument("--symbols", nargs="+", default=SYMBOLS)
+    sw.add_argument("--bar-minutes", type=int, default=15)
+    sw.add_argument("--cost-bps", type=float, default=COST_BPS["phemex"], help="round-trip fees in bps")
+    sw.add_argument("--train-months", type=int, default=6)
+    sw.add_argument("--reports", type=Path, default=Path("reports"))
 
     b = sub.add_parser("backtest", help="walk-forward train/test and write a report")
     b.add_argument("--exchange", choices=EXCHANGES, default=DEFAULT_EXCHANGE)
@@ -64,6 +75,12 @@ def main():
         asyncio.run(live.collect(a.exchange, a.symbols, a.data, a.minutes))
     elif a.cmd == "download":
         history.download(a.symbols, a.days, root=a.data)
+    elif a.cmd == "download-candles":
+        candles.download(a.symbols, a.days, root=a.data)
+    elif a.cmd == "swing":
+        path = swing.run(a.symbols, a.bar_minutes, a.cost_bps, a.train_months, a.data, a.reports)
+        print(path.read_text())
+        print(f"report written to {path}")
     elif a.cmd == "backtest":
         path = backtest.run(a.exchange, a.symbols, a.bar_seconds, a.horizons, a.model, a.cost_bps,
                             a.assumed_spread_bps, a.data, a.reports, a.save_models, a.feature_set)
