@@ -27,13 +27,14 @@ def load_bars(exchange: str, symbols, bar_s: int, root: Path) -> dict[str, pd.Da
 
 
 def run(exchange: str, symbols, bar_s: int, horizons_s, model_kind: str, cost_bps: float,
-        assumed_spread_bps: float, root: Path, report_dir: Path, save_models: bool) -> Path:
+        assumed_spread_bps: float, root: Path, report_dir: Path, save_models: bool,
+        feature_set: str = "full") -> Path:
     bars = load_bars(exchange, symbols, bar_s, root)
     has_book = all(b.spread_bps.notna().any() for b in bars.values())
     summary, details = [], []
     for h_s in horizons_s:
         horizon = max(1, round(h_s / bar_s))
-        data = build_dataset(bars, horizon)
+        data = build_dataset(bars, horizon, feature_set)
         for s, df in data.items():
             cols = feature_columns(df)
             oos = walk_forward(df, cols, horizon, model_kind)
@@ -45,19 +46,20 @@ def run(exchange: str, symbols, bar_s: int, horizons_s, model_kind: str, cost_bp
             details.append(trades.assign(symbol=s, horizon_s=horizon * bar_s))
             if save_models:
                 MODEL_DIR.mkdir(exist_ok=True)
-                path = MODEL_DIR / f"{s}_{bar_s}s_h{horizon * bar_s}s_{model_kind}.joblib"
+                path = MODEL_DIR / f"{s}_{bar_s}s_h{horizon * bar_s}s_{model_kind}_{feature_set}.joblib"
                 joblib.dump({"model": fit(df, cols, model_kind), "features": cols, "bar_s": bar_s,
                              "horizon": horizon, "symbol": s, "symbols": list(symbols),
-                             "trained_with_book": has_book}, path)
+                             "trained_with_book": has_book, "feature_set": feature_set,
+                             "exchange": exchange, "cost_bps": cost_bps}, path)
                 log.info("saved %s", path)
 
     summary = pd.DataFrame(summary)
     details = pd.concat(details, ignore_index=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     report_dir.mkdir(parents=True, exist_ok=True)
-    path = report_dir / f"backtest-{exchange}-{bar_s}s-{model_kind}-{stamp}.md"
+    path = report_dir / f"backtest-{exchange}-{bar_s}s-{model_kind}-{feature_set}-{stamp}.md"
     span = {s: (b.index.max() - b.index.min()) / 3.6e6 for s, b in bars.items()}
-    path.write_text(_render(summary, details, exchange, bar_s, model_kind, cost_bps,
+    path.write_text(_render(summary, details, exchange, bar_s, f"{model_kind}, {feature_set} features", cost_bps,
                             assumed_spread_bps, has_book, span))
     summary.to_csv(path.with_suffix(".summary.csv"), index=False)
     details.to_csv(path.with_suffix(".trades.csv"), index=False)

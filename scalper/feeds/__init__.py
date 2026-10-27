@@ -6,5 +6,6 @@ Each feed is an async generator yielding normalized events:
 """
 from .binance import binance_stream
 from .coinbase import coinbase_stream
+from .phemex import phemex_stream
 
-FEEDS = {"binance": binance_stream, "coinbase": coinbase_stream}
+FEEDS = {"binance": binance_stream, "coinbase": coinbase_stream, "phemex": phemex_stream}

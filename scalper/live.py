@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from .config import BOOK_COLUMNS, DATA_DIR, TRADE_COLUMNS
-from .feeds import binance, coinbase
+from .feeds import binance, coinbase, phemex
 from .features import build_dataset, make_bars
 from .storage import TickWriter
 
@@ -25,6 +25,8 @@ def open_feed(exchange: str, symbols):
         return binance.binance_stream(symbols, venue=exchange)
     if exchange == "coinbase":
         return coinbase.coinbase_stream(symbols)
+    if exchange == "phemex":
+        return phemex.phemex_stream(symbols)
     raise SystemExit(f"unknown exchange {exchange!r}")
 
 
@@ -124,7 +126,7 @@ class PaperTrader:
         last = min(b.index.max() for b in bars.values())
         self._close_positions(bars, last)
         for m in self.models:
-            data = build_dataset(bars, m["horizon"])[m["symbol"]]
+            data = build_dataset(bars, m["horizon"], m.get("feature_set", "full"))[m["symbol"]]
             if last not in data.index:
                 continue
             x = data.loc[[last]].reindex(columns=m["features"])

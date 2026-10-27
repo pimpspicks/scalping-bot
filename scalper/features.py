@@ -87,12 +87,42 @@ def symbol_features(bars: pd.DataFrame) -> pd.DataFrame:
     return f
 
 
-CROSS_COLS = ("ret_1", "ret_3", "ofi_6")
+TV_RET_LAGS = (1, 3, 6, 12, 30)
 
 
-def build_dataset(bars_by_symbol: dict[str, pd.DataFrame], horizon: int) -> dict[str, pd.DataFrame]:
-    """Features + targets per symbol, including the other symbols' recent moves (lead-lag)."""
-    feats = {s: symbol_features(b) for s, b in bars_by_symbol.items()}
+def tv_symbol_features(bars: pd.DataFrame) -> pd.DataFrame:
+    """Features a TradingView Pine Script can compute from a chart's OHLCV alone (no order book,
+    no buy/sell split). Each definition is mirrored line for line in scalper/pine.py, so change
+    both together. Stdevs use ddof=0 to match Pine's ta.stdev."""
+    lc = np.log(bars.close)
+    r1 = lc.diff()
+    f = pd.DataFrame(index=bars.index)
+    for k in TV_RET_LAGS:
+        f[f"ret_{k}"] = lc - lc.shift(k)
+    f["vol_12"] = r1.rolling(12).std(ddof=0)
+    f["vol_60"] = r1.rolling(60).std(ddof=0)
+    f["range_1"] = np.log(bars.high / bars.low)
+    lv = np.log1p(bars.volume)
+    f["volume_z"] = (lv - lv.rolling(60).mean()) / lv.rolling(60).std(ddof=0)
+    hlc3 = (bars.high + bars.low + bars.close) / 3
+    vw = (hlc3 * bars.volume).rolling(12).sum() / bars.volume.rolling(12).sum()
+    f["vwap_dev"] = np.log(bars.close / vw)
+    return f.replace([np.inf, -np.inf], np.nan)
+
+
+FEATURE_SETS = {
+    # name: (per-symbol feature function, columns borrowed from the other symbols)
+    "full": (symbol_features, ("ret_1", "ret_3", "ofi_6")),
+    "tv": (tv_symbol_features, ("ret_1", "ret_3")),
+}
+
+
+def build_dataset(bars_by_symbol: dict[str, pd.DataFrame], horizon: int,
+                  feature_set: str = "full") -> dict[str, pd.DataFrame]:
+    """Features + targets per symbol, including the other symbols' recent moves (lead-lag).
+    The target always uses the mid price when book data exists, whatever the feature set."""
+    func, cross_cols = FEATURE_SETS[feature_set]
+    feats = {s: func(b) for s, b in bars_by_symbol.items()}
     common = None
     for f in feats.values():
         common = f.index if common is None else common.intersection(f.index)
@@ -101,7 +131,7 @@ def build_dataset(bars_by_symbol: dict[str, pd.DataFrame], horizon: int) -> dict
         f = f.loc[common].copy()
         for other, g in feats.items():
             if other != s:
-                for c in CROSS_COLS:
+                for c in cross_cols:
                     f[f"x_{other}_{c}"] = g.loc[common, c]
         b = bars_by_symbol[s].loc[common]
         lp = np.log(b.mid)

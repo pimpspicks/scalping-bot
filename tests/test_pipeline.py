@@ -74,3 +74,25 @@ def test_trade_prices_fake_an_edge():
     df = build_dataset(bars, 1)["BTC"]
     stats, _ = evaluate(walk_forward(df, feature_columns(df), 1), cost_bps=0, assumed_spread_bps=0)
     assert stats["accuracy"] > 0.6
+
+
+def test_pine_export_matches_python_model(tmp_path):
+    from scalper.model import fit
+    from scalper.pine import export, predict_like_pine
+
+    bars = {s: make_bars(*synth_ticks(n_seconds=4 * 3600, signal=0.3, seed=i), 5) for i, s in enumerate(["BTC", "ETH", "SOL"])}
+    df = build_dataset(bars, 2, "tv")["BTC"]
+    cols = feature_columns(df)
+    assert not any(c.startswith(("ofi", "spread", "book", "micro", "log_trades")) for c in cols)
+    bundle = {"model": fit(df, cols, "logreg"), "features": cols, "bar_s": 5, "horizon": 2, "symbol": "BTC",
+              "symbols": ["BTC", "ETH", "SOL"], "feature_set": "tv", "exchange": "binance", "cost_bps": 20.0}
+    rows = df[cols].iloc[::97]
+    expected = bundle["model"].predict_proba(rows)[:, 1]
+    got = [predict_like_pine(bundle, r.to_dict()) for _, r in rows.iterrows()]
+    np.testing.assert_allclose(got, expected, rtol=1e-9)
+
+    script = export(bundle)
+    assert script.startswith("//@version=6")
+    for c in cols:
+        assert f"nz({c}," in script
+    assert 'request.security("BINANCE:ETHUSDT"' in script
