@@ -99,7 +99,7 @@ def model_signals(b: Bars, others: list[Bars], horizon: int, thresholds) -> dict
     c = np.log(b.df.close)
     y = np.sign(c.shift(-horizon) - c)
     p = pd.Series(np.nan, index=f.index)
-    months = f.index.to_period("M").unique()
+    months = f.index.tz_localize(None).to_period("M").unique()
     for m in months[3:]:  # need some history before the first fit
         start = m.start_time.tz_localize("UTC")
         end = (m + 1).start_time.tz_localize("UTC")
@@ -158,8 +158,10 @@ def simulate(b: Bars, signal: np.ndarray, stop_atr: float, target_atr: float, ho
         exit_bar = min(j + 1, n - 1)  # funding counted through the end of the exit bar
         funding = d * (b.funding_cum[exit_bar] - b.funding_cum[e]) * 1e4
         trades.append((i, j + 1, b.df.index[e], d, gross, funding, gross - funding - fee_bps, why))
-    return pd.DataFrame(trades, columns=["sig_bar", "next_free", "entry_time", "dir", "gross_bps",
-                                         "funding_bps", "net_bps", "exit"])
+    t = pd.DataFrame(trades, columns=["sig_bar", "next_free", "entry_time", "dir", "gross_bps",
+                                      "funding_bps", "net_bps", "exit"])
+    t["entry_time"] = pd.to_datetime(t.entry_time, utc=True)
+    return t
 
 
 def strategy_grid(b: Bars, others: list[Bars], bar_min: int) -> dict[str, dict[tuple, np.ndarray]]:
