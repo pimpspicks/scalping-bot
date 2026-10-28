@@ -71,7 +71,13 @@ def download(symbols, days: int, root: Path = DATA_DIR, start: str | None = None
             path = out_dir / f"1m-{month:%Y%m}.csv.gz"
             if not path.exists() or nxt > now:
                 upto = min(nxt, stop.replace(second=0, microsecond=0))
-                df = _fetch_minutes(PHEMEX_SYMBOLS[s], int(month.timestamp()), int(upto.timestamp()))
+                frm, old = int(month.timestamp()), None
+                if path.exists():  # current month: fetch only what is new
+                    old = pd.read_csv(path)
+                    frm = int(old.ts.max()) - 60  # refetch the last minute, it may have been partial
+                df = _fetch_minutes(PHEMEX_SYMBOLS[s], frm, int(upto.timestamp()))
+                if old is not None:
+                    df = pd.concat([old[old.ts < frm], df]).sort_values("ts")
                 if len(df):
                     df.to_csv(path, index=False, compression="gzip")
                 log.info("%s: %d candles for %s", s, len(df), f"{month:%Y-%m}")

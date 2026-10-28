@@ -40,6 +40,22 @@ Each trade exits at an ATR stop, an ATR target or a maximum hold. Settings are r
 month using only the previous months, so every reported trade is out of sample. On 2024-10 to
 2026-10 data none of these strategies (ICT included) showed an edge that beats fees.
 
+## Paper bot (20x ladder, no orders)
+
+```bash
+python -m scalper maker-test                      # every rule with limit entries / take profits, market stops
+python -m scalper maker-test --rule-set niche     # niche ideas (CME gap, expiry Friday, Hurst switch, ...)
+python -m scalper paper-ladder                    # live paper trading on Phemex candles, updates every 15 min
+```
+
+`paper-ladder` runs three strategies (4h EMA 21/50 cross, 1h Friday post-expiry range break, 15m
+Donchian breakout when the Hurst exponent says trending) on BTC, ETH and SOL. Each update downloads
+the new 1-minute candles and replays them through the same simulation as `maker-test`, so paper
+results match the backtest trade for trade. It writes `paper/trades.csv` and `paper/signals.csv` and
+keeps its start time in `paper/state.json`, so a restart continues the same record. It never sends
+orders and needs no API key. Leave it running (it sleeps between candles); the first start downloads
+60 days of candles, which takes a few minutes.
+
 ## TradingView
 
 TradingView can't receive data from a bot, so the bot goes to TradingView instead: it exports a

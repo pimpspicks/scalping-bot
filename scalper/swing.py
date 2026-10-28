@@ -39,8 +39,11 @@ class Bars:
     funding_cum: np.ndarray  # cumulative funding rate paid by a long, up to each bar's open
 
 
-def make_bars(symbol: str, bar_min: int, root: Path) -> Bars:
+def make_bars(symbol: str, bar_min: int, root: Path, until: pd.Timestamp | None = None) -> Bars:
+    """`until`: drop minutes at or after this time (e.g. the start of a bar that is still forming)."""
     m = load_candles(symbol, root)
+    if until is not None:
+        m = m[m.index < until]
     df = m.resample(f"{bar_min}min").agg({"open": "first", "high": "max", "low": "min", "close": "last",
                                           "volume": "sum"}).dropna()
     prev = df.close.shift()

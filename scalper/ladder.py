@@ -185,7 +185,8 @@ def simulate_ladder_limit(b: Bars, signal: np.ndarray, step: float, maker_bps: f
         w = slice(i + 1, min(i + 1 + wait_bars, n))
         through = (l[w] < limit) if d > 0 else (h[w] > limit)
         if not through.any():
-            unfilled += 1
+            if i + wait_bars < n:  # still waiting at the end of the data: not counted yet
+                unfilled += 1
             continue
         e = i + 1 + int(np.argmax(through))
         entry = min(limit, o[e]) if d > 0 else max(limit, o[e])  # a gap fills at the better open
@@ -218,7 +219,7 @@ def simulate_ladder_limit(b: Bars, signal: np.ndarray, step: float, maker_bps: f
             k = m - 1
             pnl += left * d * (c[e + k] / entry - 1)
             fees += taker_bps * left
-            kind = "time"
+            kind = "time" if e + max_hold_bars <= n else "open"  # "open": data ended first, marked at the last close
         j = e + k
         free = j + 1
         funding = d * (b.funding_cum[min(j + 1, n - 1)] - b.funding_cum[e]) * 1e4
