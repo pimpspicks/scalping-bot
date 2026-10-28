@@ -32,6 +32,7 @@ def main():
     dc.add_argument("--days", type=int, default=365)
     dc.add_argument("--start", help="YYYY-MM-DD; overrides --days")
     dc.add_argument("--end", help="YYYY-MM-DD, exclusive (default: now)")
+    dc.add_argument("--minutes", type=int, choices=[1, 15], default=1, help="candle size (15 = much faster)")
 
     sw = sub.add_parser("swing", help="walk-forward swing-trade backtest (minutes to hours) on Phemex candles")
     sw.add_argument("--symbols", nargs="+", default=SYMBOLS)
@@ -154,7 +155,7 @@ def main():
     elif a.cmd == "download":
         history.download(a.symbols, a.days, root=a.data)
     elif a.cmd == "download-candles":
-        candles.download(a.symbols, a.days, root=a.data, start=a.start, end=a.end)
+        candles.download(a.symbols, a.days, root=a.data, start=a.start, end=a.end, minutes=a.minutes)
     elif a.cmd == "swing":
         path = swing.run(a.symbols, a.bar_minutes, a.cost_bps, a.train_months, a.data, a.reports, a.strategies)
         print(path.read_text())
