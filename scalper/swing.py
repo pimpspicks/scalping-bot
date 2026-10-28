@@ -22,6 +22,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from .candles import load_candles, load_funding
+from .ict import ict_grid
 
 log = logging.getLogger(__name__)
 
@@ -164,7 +165,9 @@ def simulate(b: Bars, signal: np.ndarray, stop_atr: float, target_atr: float, ho
     return t
 
 
-def strategy_grid(b: Bars, others: list[Bars], bar_min: int) -> dict[str, dict[tuple, np.ndarray]]:
+def strategy_grid(b: Bars, others: list[Bars], bar_min: int, family: str = "classic") -> dict[str, dict[tuple, np.ndarray]]:
+    if family == "ict":
+        return ict_grid(b.df, b.atr, bar_min)
     per_h = 60 // bar_min if bar_min <= 60 else 1
     grids = {
         "breakout": {("n", n): donchian(b, n) for n in (4 * per_h, 12 * per_h, 24 * per_h)},
@@ -221,14 +224,15 @@ def summarize(t: pd.DataFrame) -> dict:
     }
 
 
-def run(symbols, bar_min: int, fee_bps: float, train_months: int, root: Path, report_dir: Path) -> Path:
+def run(symbols, bar_min: int, fee_bps: float, train_months: int, root: Path, report_dir: Path,
+        family: str = "classic") -> Path:
     bars = {s: make_bars(s, bar_min, root) for s in symbols}
     rows, monthly, picks, all_oos = [], [], [], []
     per_h = 60 / bar_min
     exits = list(itertools.product(STOPS, TARGETS, [int(h * per_h) for h in HOLDS_H]))
     for s, b in bars.items():
         others = [o for k, o in bars.items() if k != s]
-        for strat, entries in strategy_grid(b, others, bar_min).items():
+        for strat, entries in strategy_grid(b, others, bar_min, family).items():
             combos = {}
             for (ekey, sig), (st, tg, hb) in itertools.product(entries.items(), exits):
                 combos[(*ekey, "stop", st, "tp", tg, "hold_h", hb / per_h)] = simulate(b, sig, st, tg, hb, fee_bps)
@@ -247,7 +251,7 @@ def run(symbols, bar_min: int, fee_bps: float, train_months: int, root: Path, re
                      "max_drawdown_1x": (c / c.cummax() - 1).min()})
     summary = pd.DataFrame(rows)
     report_dir.mkdir(parents=True, exist_ok=True)
-    path = report_dir / f"swing-phemex-{bar_min}m.md"
+    path = report_dir / f"swing-phemex-{family}-{bar_min}m.md"
     span = {s: f"{b.df.index.min():%Y-%m-%d} to {b.df.index.max():%Y-%m-%d}" for s, b in bars.items()}
     monthly_df = pd.concat(monthly, axis=1).fillna(0).round(0) if monthly else pd.DataFrame()
     path.write_text(_render(summary, monthly_df, pd.concat(picks), bar_min, fee_bps, train_months, span, first_test))

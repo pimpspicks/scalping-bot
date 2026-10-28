@@ -36,6 +36,8 @@ def main():
     sw.add_argument("--bar-minutes", type=int, default=15)
     sw.add_argument("--cost-bps", type=float, default=COST_BPS["phemex"], help="round-trip fees in bps")
     sw.add_argument("--train-months", type=int, default=6)
+    sw.add_argument("--strategies", choices=["classic", "ict"], default="classic",
+                    help="classic = breakout/trend/mean reversion/model; ict = FVG, sweeps, MSS, silver bullet")
     sw.add_argument("--reports", type=Path, default=Path("reports"))
 
     b = sub.add_parser("backtest", help="walk-forward train/test and write a report")
@@ -78,7 +80,7 @@ def main():
     elif a.cmd == "download-candles":
         candles.download(a.symbols, a.days, root=a.data)
     elif a.cmd == "swing":
-        path = swing.run(a.symbols, a.bar_minutes, a.cost_bps, a.train_months, a.data, a.reports)
+        path = swing.run(a.symbols, a.bar_minutes, a.cost_bps, a.train_months, a.data, a.reports, a.strategies)
         print(path.read_text())
         print(f"report written to {path}")
     elif a.cmd == "backtest":
