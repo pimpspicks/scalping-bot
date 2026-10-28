@@ -180,14 +180,15 @@ def strategy_grid(b: Bars, others: list[Bars], bar_min: int, family: str = "clas
     return grids
 
 
-def walk_forward(trades_by_combo: dict[tuple, pd.DataFrame], train_months: int, min_train_trades: int = 10):
+def walk_forward(trades_by_combo: dict[tuple, pd.DataFrame], train_months: int, min_train_trades: int = 10,
+                 purge_hours: float = max(HOLDS_H)):
     """For each month, pick the combo with the best total net bps over the previous months and
     keep its trades in that month. Returns (out-of-sample trades, chosen combo per month)."""
     all_months = sorted({m for t in trades_by_combo.values() for m in t.entry_time.dt.tz_localize(None).dt.to_period("M")})
     picked, kept = [], []
     for m in all_months[train_months:]:
         lo = (m - train_months).start_time
-        hi = m.start_time - pd.Timedelta(hours=max(HOLDS_H))  # training trades must have closed
+        hi = m.start_time - pd.Timedelta(hours=purge_hours)  # training trades must have closed
         best, best_val = None, -np.inf
         for combo, t in trades_by_combo.items():
             et = t.entry_time.dt.tz_localize(None)
