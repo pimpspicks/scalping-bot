@@ -165,6 +165,52 @@ account is used as margin on every trade. `hit_t1` / `hit_t3` = share of trades 
 """
 
 
+def _limit_trade(o, h, l, c, fcum, i, d, step, maker_bps, taker_bps, max_hold_bars, wait_bars, offset=0.0):
+    """One limit-entry ladder trade decided at bar i's close in direction d. None if the limit never fills
+    within `wait_bars`; else (fill bar, exit bar, targets hit, exit kind, gross, funding, fees, net) in bps."""
+    n = len(o)
+    limit = c[i] * (1 - d * offset)
+    w = slice(i + 1, min(i + 1 + wait_bars, n))
+    through = (l[w] < limit) if d > 0 else (h[w] > limit)
+    if not through.any():
+        return None
+    e = i + 1 + int(np.argmax(through))
+    entry = min(limit, o[e]) if d > 0 else max(limit, o[e])  # a gap fills at the better open
+    stop = entry * (1 - d * step)
+    targets = [entry * (1 + d * step * k) for k in (1, 2, 3)]
+    last = min(e + max_hold_bars, n) - 1
+    hi, lo = h[e:last + 1], l[e:last + 1]
+    m = len(hi)
+    stop_mask = (lo <= stop) if d > 0 else (hi >= stop)
+    s_idx = int(np.argmax(stop_mask)) if stop_mask.any() else m
+    t_idx = []
+    for t in targets:
+        mask = (hi[1:] > t) if d > 0 else (lo[1:] < t)  # not in the fill bar
+        t_idx.append(1 + int(np.argmax(mask)) if mask.any() else m)
+    hit = 0
+    while hit < 3 and t_idx[hit] < s_idx:
+        hit += 1
+    pnl = sum(SELL_FRACTIONS[k] * d * (targets[k] / entry - 1) for k in range(hit))
+    left = 1.0 - sum(SELL_FRACTIONS[:hit])
+    fees = maker_bps * (1 + (1 - left))  # entry + take-profit fills, as maker
+    if hit == 3:
+        k, kind = t_idx[2], "t3"
+    elif s_idx < m:
+        k = s_idx
+        px = min(o[e + k], stop) if (d > 0 and k > 0) else (max(o[e + k], stop) if k > 0 else stop)
+        pnl += left * d * (px / entry - 1)
+        fees += taker_bps * left
+        kind = "stop" if hit == 0 else f"stop_after_t{hit}"
+    else:
+        k = m - 1
+        pnl += left * d * (c[e + k] / entry - 1)
+        fees += taker_bps * left
+        kind = "time" if e + max_hold_bars <= n else "open"  # "open": data ended first, marked at the last close
+    j = e + k
+    funding = d * (fcum[min(j + 1, n - 1)] - fcum[e]) * 1e4
+    return e, j, hit, kind, pnl * 1e4, funding, fees, pnl * 1e4 - funding - fees
+
+
 def simulate_ladder_limit(b: Bars, signal: np.ndarray, step: float, maker_bps: float, taker_bps: float,
                           max_hold_bars: int, wait_bars: int, offset: float = 0.0) -> pd.DataFrame:
     """Ladder trades entered and taken profit with limit orders (maker), stopped with market orders (taker).
@@ -180,50 +226,15 @@ def simulate_ladder_limit(b: Bars, signal: np.ndarray, step: float, maker_bps: f
     for i in np.flatnonzero(signal):
         if i < free or i + 1 >= n:
             continue
-        d = signal[i]
-        limit = c[i] * (1 - d * offset)
-        w = slice(i + 1, min(i + 1 + wait_bars, n))
-        through = (l[w] < limit) if d > 0 else (h[w] > limit)
-        if not through.any():
+        r = _limit_trade(o, h, l, c, b.funding_cum, i, signal[i], step, maker_bps, taker_bps, max_hold_bars,
+                         wait_bars, offset)
+        if r is None:
             if i + wait_bars < n:  # still waiting at the end of the data: not counted yet
                 unfilled += 1
             continue
-        e = i + 1 + int(np.argmax(through))
-        entry = min(limit, o[e]) if d > 0 else max(limit, o[e])  # a gap fills at the better open
-        stop = entry * (1 - d * step)
-        targets = [entry * (1 + d * step * k) for k in (1, 2, 3)]
-        last = min(e + max_hold_bars, n) - 1
-        hi, lo = h[e:last + 1], l[e:last + 1]
-        m = len(hi)
-        stop_mask = (lo <= stop) if d > 0 else (hi >= stop)
-        s_idx = int(np.argmax(stop_mask)) if stop_mask.any() else m
-        t_idx = []
-        for t in targets:
-            mask = (hi[1:] > t) if d > 0 else (lo[1:] < t)  # not in the fill bar
-            t_idx.append(1 + int(np.argmax(mask)) if mask.any() else m)
-        hit = 0
-        while hit < 3 and t_idx[hit] < s_idx:
-            hit += 1
-        pnl = sum(SELL_FRACTIONS[k] * d * (targets[k] / entry - 1) for k in range(hit))
-        left = 1.0 - sum(SELL_FRACTIONS[:hit])
-        fees = maker_bps * (1 + (1 - left))  # entry + take-profit fills, as maker
-        if hit == 3:
-            k, kind = t_idx[2], "t3"
-        elif s_idx < m:
-            k = s_idx
-            px = min(o[e + k], stop) if (d > 0 and k > 0) else (max(o[e + k], stop) if k > 0 else stop)
-            pnl += left * d * (px / entry - 1)
-            fees += taker_bps * left
-            kind = "stop" if hit == 0 else f"stop_after_t{hit}"
-        else:
-            k = m - 1
-            pnl += left * d * (c[e + k] / entry - 1)
-            fees += taker_bps * left
-            kind = "time" if e + max_hold_bars <= n else "open"  # "open": data ended first, marked at the last close
-        j = e + k
+        e, j, hit, kind, gross, funding, fees, net = r
         free = j + 1
-        funding = d * (b.funding_cum[min(j + 1, n - 1)] - b.funding_cum[e]) * 1e4
-        rows.append((b.df.index[e], d, hit, kind, pnl * 1e4, funding, fees, pnl * 1e4 - funding - fees))
+        rows.append((b.df.index[e], signal[i], hit, kind, gross, funding, fees, net))
     t = pd.DataFrame(rows, columns=["entry_time", "dir", "targets_hit", "exit", "gross_bps", "funding_bps",
                                     "fee_bps", "net_bps"])
     t["entry_time"] = pd.to_datetime(t.entry_time, utc=True)
