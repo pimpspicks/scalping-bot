@@ -88,7 +88,7 @@ def main():
     mk.add_argument("--start", default="2024-10-01")
     mk.add_argument("--end", default="2026-11-01")
     mk.add_argument("--label", default="dev")
-    mk.add_argument("--rule-set", choices=["all", "niche"], default="all")
+    mk.add_argument("--rule-set", choices=["all", "niche", "papers"], default="all")
     mk.add_argument("--only", type=Path, help="survivors CSV from an earlier run: test just those rules")
     mk.add_argument("--reports", type=Path, default=Path("reports"))
 
