@@ -99,16 +99,20 @@ class _Bars:
 
 
 def run(symbols, bar_mins, lev: float, stop_margin: float, fee_bps: float, max_hold_h: float, start: str,
-        test_start: str, root: Path, report_dir: Path) -> Path:
+        test_start: str, root: Path, report_dir: Path, rule_set: str = "classic") -> Path:
+    """Rank every rule of `rule_set` ("classic" or "new") on the bars between `start` and `test_start`."""
+    from .rules2 import new_rule_signals
     rows, all_trades = [], []
     lo, hi = pd.Timestamp(start, tz="UTC"), pd.Timestamp(test_start, tz="UTC")
     for bm in bar_mins:
         hold = int(max_hold_h * 60 / bm)
         per_rule: dict = {}
-        for s in symbols:
-            b = make_bars(s, bm, root)
+        all_bars = {s: make_bars(s, bm, root) for s in symbols}
+        for s, b in all_bars.items():
             in_dev = np.asarray((b.df.index >= lo) & (b.df.index < hi))
-            for (fam, name), sig in rule_signals(b.df, b.funding_cum).items():
+            sigs = (rule_signals(b.df, b.funding_cum) if rule_set == "classic"
+                    else new_rule_signals(s, all_bars))
+            for (fam, name), sig in sigs.items():
                 sig = np.where(in_dev, sig, 0)
                 for way, sg in (("as rule", sig), ("fade", -sig)):
                     t = simulate_ladder(b, sg, stop_margin / lev, False, fee_bps, hold)
@@ -123,7 +127,7 @@ def run(symbols, bar_mins, lev: float, stop_margin: float, fee_bps: float, max_h
             rows.append({"chart": f"{bm}m", "family": fam, "rule": name, "way": way, **_stats(t)})
     res = pd.DataFrame(rows).sort_values("avg_roi_pct", ascending=False)
     report_dir.mkdir(parents=True, exist_ok=True)
-    path = report_dir / "indicator-ranking.md"
+    path = report_dir / ("indicator-ranking.md" if rule_set == "classic" else f"{rule_set}-ranking.md")
     res.to_csv(path.with_suffix(".csv"), index=False)
     pd.concat(all_trades).to_csv(path.with_suffix(".trades.csv.gz"), index=False)
     path.write_text(_render(res, lev, stop_margin, fee_bps, max_hold_h, start, test_start))

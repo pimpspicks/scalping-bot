@@ -30,6 +30,8 @@ def main():
     dc = sub.add_parser("download-candles", help="fetch Phemex 1-minute candles + funding history")
     dc.add_argument("--symbols", nargs="+", default=SYMBOLS)
     dc.add_argument("--days", type=int, default=365)
+    dc.add_argument("--start", help="YYYY-MM-DD; overrides --days")
+    dc.add_argument("--end", help="YYYY-MM-DD, exclusive (default: now)")
 
     sw = sub.add_parser("swing", help="walk-forward swing-trade backtest (minutes to hours) on Phemex candles")
     sw.add_argument("--symbols", nargs="+", default=SYMBOLS)
@@ -71,6 +73,7 @@ def main():
     rk.add_argument("--max-hold-hours", type=float, default=72)
     rk.add_argument("--start", default="2024-10-01")
     rk.add_argument("--test-start", default="2026-05-01")
+    rk.add_argument("--rule-set", choices=["classic", "new"], default="classic")
     rk.add_argument("--reports", type=Path, default=Path("reports"))
 
     bu = sub.add_parser("build-up", help="start from the 1h Ichimoku cloud break and add pieces one at a time")
@@ -123,7 +126,7 @@ def main():
     elif a.cmd == "download":
         history.download(a.symbols, a.days, root=a.data)
     elif a.cmd == "download-candles":
-        candles.download(a.symbols, a.days, root=a.data)
+        candles.download(a.symbols, a.days, root=a.data, start=a.start, end=a.end)
     elif a.cmd == "swing":
         path = swing.run(a.symbols, a.bar_minutes, a.cost_bps, a.train_months, a.data, a.reports, a.strategies)
         print(path.read_text())
@@ -140,7 +143,7 @@ def main():
         print(f"report written to {path}")
     elif a.cmd == "rank-indicators":
         path = rules.run(a.symbols, a.bar_minutes, a.leverage, a.stop_margin, a.cost_bps, a.max_hold_hours,
-                         a.start, a.test_start, a.data, a.reports)
+                         a.start, a.test_start, a.data, a.reports, a.rule_set)
         print(path.read_text())
         print(f"report written to {path}")
     elif a.cmd == "build-up":

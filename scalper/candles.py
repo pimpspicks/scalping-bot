@@ -56,23 +56,27 @@ def _fetch_minutes(pair: str, start: int, end: int) -> pd.DataFrame:
     return df[(df.ts >= start) & (df.ts < end)].drop_duplicates("ts").sort_values("ts")
 
 
-def download(symbols, days: int, root: Path = DATA_DIR):
+def download(symbols, days: int, root: Path = DATA_DIR, start: str | None = None, end: str | None = None):
+    """Fetch the last `days` days, or the months from `start` up to (not including) `end` (YYYY-MM-DD)."""
     now = datetime.now(timezone.utc)
-    first = (now - timedelta(days=days)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    stop = min(now, datetime.fromisoformat(end).replace(tzinfo=timezone.utc)) if end else now
+    first = datetime.fromisoformat(start).replace(tzinfo=timezone.utc) if start else now - timedelta(days=days)
+    first = first.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     for s in symbols:
         out_dir = candles_dir(s, root)
         out_dir.mkdir(parents=True, exist_ok=True)
         month = first
-        while month < now:
+        while month < stop:
             nxt = (month + timedelta(days=32)).replace(day=1)
             path = out_dir / f"1m-{month:%Y%m}.csv.gz"
             if not path.exists() or nxt > now:
-                end = min(nxt, now.replace(second=0, microsecond=0))
-                df = _fetch_minutes(PHEMEX_SYMBOLS[s], int(month.timestamp()), int(end.timestamp()))
-                df.to_csv(path, index=False, compression="gzip")
+                upto = min(nxt, stop.replace(second=0, microsecond=0))
+                df = _fetch_minutes(PHEMEX_SYMBOLS[s], int(month.timestamp()), int(upto.timestamp()))
+                if len(df):
+                    df.to_csv(path, index=False, compression="gzip")
                 log.info("%s: %d candles for %s", s, len(df), f"{month:%Y-%m}")
             month = nxt
-        _download_funding(s, first, now, out_dir)
+        _download_funding(s, first, stop, out_dir)
 
 
 def _download_funding(symbol: str, start: datetime, end: datetime, out_dir: Path):
