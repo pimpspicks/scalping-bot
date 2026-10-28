@@ -59,12 +59,16 @@ orders and needs no API key. Leave it running (it sleeps between candles); the f
 ## Recording data nobody keeps history of
 
 ```bash
+./record.sh                          # or record.bat on Windows: record-all, restarted after any crash
+python -m scalper record-all         # record-market + record-flow together
 python -m scalper record-market      # every minute: open interest, funding, predicted funding, basis, quotes, all perps
-python -m scalper collect            # every trade + top of book for BTC/ETH/SOL (order flow)
+python -m scalper record-flow        # 10-second taker buy/sell volume + book depth for 20 perps
+python -m scalper collect            # every trade + top of book (100 ms) for BTC/ETH/SOL, much bigger
 ```
 
 Phemex has no history of open interest, predicted funding or order flow, so these must be recorded
-going forward. Both run until stopped and need no API key. `record-market` writes about 3 MB a day.
+going forward. They run until stopped and need no API key. `record-all` writes about 40 MB a day
+(`data/market/` and `data/flow/`).
 
 ## TradingView
 

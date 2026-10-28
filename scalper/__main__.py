@@ -2,12 +2,13 @@
 import argparse
 import asyncio
 import logging
+import threading
 from pathlib import Path
 
 import joblib
 
-from . import backtest, build_up, candles, history, ladder, live, maker_test, paper_ladder, pine, predict, recorder, rules, swing
-from .config import COST_BPS, DATA_DIR, DEFAULT_EXCHANGE, SYMBOLS
+from . import backtest, build_up, candles, flow, history, ladder, live, maker_test, paper_ladder, pine, predict, recorder, rules, swing
+from .config import COST_BPS, DATA_DIR, DEFAULT_EXCHANGE, SYMBOLS, WATCH_SYMBOLS
 
 EXCHANGES = ["phemex", "binance", "binanceus", "coinbase"]
 
@@ -119,6 +120,14 @@ def main():
     b.add_argument("--feature-set", choices=["full", "tv"], default="full",
                    help="tv = only chart OHLCV features, so the model can be exported to TradingView")
 
+    ra = sub.add_parser("record-all", help="run record-market and record-flow together, until stopped")
+    ra.add_argument("--symbols", nargs="+", default=WATCH_SYMBOLS)
+    ra.add_argument("--minutes", type=float, help="stop after this long (default: run forever)")
+
+    rf = sub.add_parser("record-flow", help="10-second order-flow and book-depth summaries for many perps")
+    rf.add_argument("--symbols", nargs="+", default=WATCH_SYMBOLS)
+    rf.add_argument("--minutes", type=float, help="stop after this long (default: run forever)")
+
     rm = sub.add_parser("record-market", help="every minute, save open interest, funding, basis and quotes of all Phemex perps")
     rm.add_argument("--once", action="store_true", help="take one snapshot and exit")
 
@@ -199,6 +208,13 @@ def main():
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(pine.export(joblib.load(a.model), a.threshold, a.exchange))
         print(f"wrote {out}; paste it into TradingView's Pine Editor and click 'Add to chart'")
+    elif a.cmd == "record-flow":
+        asyncio.run(flow.record(a.symbols, a.data, a.minutes))
+    elif a.cmd == "record-all":
+        async def both():
+            threading.Thread(target=recorder.run, args=(a.data,), daemon=True).start()
+            await flow.record(a.symbols, a.data, a.minutes)
+        asyncio.run(both())
     elif a.cmd == "record-market":
         recorder.run(a.data, once=a.once)
     elif a.cmd == "paper-ladder":
