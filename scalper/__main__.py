@@ -6,7 +6,7 @@ from pathlib import Path
 
 import joblib
 
-from . import backtest, build_up, candles, history, ladder, live, pine, predict, rules, swing
+from . import backtest, build_up, candles, history, ladder, live, maker_test, pine, predict, rules, swing
 from .config import COST_BPS, DATA_DIR, DEFAULT_EXCHANGE, SYMBOLS
 
 EXCHANGES = ["phemex", "binance", "binanceus", "coinbase"]
@@ -75,6 +75,21 @@ def main():
     rk.add_argument("--test-start", default="2026-05-01")
     rk.add_argument("--rule-set", choices=["classic", "new"], default="classic")
     rk.add_argument("--reports", type=Path, default=Path("reports"))
+
+    mk = sub.add_parser("maker-test", help="every rule traded with limit entries/take profits and market stops")
+    mk.add_argument("--symbols", nargs="+", default=SYMBOLS)
+    mk.add_argument("--bar-minutes", type=int, nargs="+", default=[15, 60, 240])
+    mk.add_argument("--leverage", type=float, default=20)
+    mk.add_argument("--stop-margin", type=float, default=0.25)
+    mk.add_argument("--maker-bps", type=float, default=1.0)
+    mk.add_argument("--taker-bps", type=float, default=6.0)
+    mk.add_argument("--max-hold-hours", type=float, default=72)
+    mk.add_argument("--wait-bars", type=int, default=4, help="15-minute bars a limit entry waits before it is cancelled")
+    mk.add_argument("--start", default="2024-10-01")
+    mk.add_argument("--end", default="2026-11-01")
+    mk.add_argument("--label", default="dev")
+    mk.add_argument("--only", type=Path, help="survivors CSV from an earlier run: test just those rules")
+    mk.add_argument("--reports", type=Path, default=Path("reports"))
 
     bu = sub.add_parser("build-up", help="start from the 1h Ichimoku cloud break and add pieces one at a time")
     bu.add_argument("--symbols", nargs="+", default=SYMBOLS)
@@ -145,6 +160,11 @@ def main():
         path = rules.run(a.symbols, a.bar_minutes, a.leverage, a.stop_margin, a.cost_bps, a.max_hold_hours,
                          a.start, a.test_start, a.data, a.reports, a.rule_set)
         print(path.read_text())
+        print(f"report written to {path}")
+    elif a.cmd == "maker-test":
+        path = maker_test.run(a.symbols, a.bar_minutes, a.leverage, a.stop_margin, a.maker_bps, a.taker_bps,
+                              a.max_hold_hours, a.wait_bars, a.start, a.end, a.data, a.reports, a.label, a.only)
+        print(path.read_text()[:3000])
         print(f"report written to {path}")
     elif a.cmd == "build-up":
         path = build_up.run(a.symbols, a.leverage, a.stop_margin, a.cost_bps, a.max_hold_hours, a.start,
