@@ -7,7 +7,7 @@ from pathlib import Path
 
 import joblib
 
-from . import backtest, build_up, candles, flow, history, ladder, live, maker_test, paper_ladder, pine, predict, recorder, rules, swing
+from . import backtest, binance_metrics, build_up, candles, flow, history, ladder, live, maker_test, paper_ladder, pine, positioning, predict, recorder, rules, swing
 from .config import COST_BPS, DATA_DIR, DEFAULT_EXCHANGE, SYMBOLS, WATCH_SYMBOLS
 
 EXCHANGES = ["phemex", "binance", "binanceus", "coinbase"]
@@ -34,6 +34,22 @@ def main():
     dc.add_argument("--start", help="YYYY-MM-DD; overrides --days")
     dc.add_argument("--end", help="YYYY-MM-DD, exclusive (default: now)")
     dc.add_argument("--minutes", type=int, choices=[1, 15], default=1, help="candle size (15 = much faster)")
+
+    bm = sub.add_parser("download-binance-metrics",
+                        help="fetch Binance futures open interest, long/short ratios and taker volume (5 min)")
+    bm.add_argument("--symbols", nargs="+", default=WATCH_SYMBOLS)
+    bm.add_argument("--start", default="2022-12-01", help="YYYY-MM-DD")
+    bm.add_argument("--end", help="YYYY-MM-DD, exclusive (default: today)")
+    bm.add_argument("--candles", action="store_true",
+                    help="instead fetch Binance 15-minute perp candles + funding into the Phemex candle layout")
+
+    po = sub.add_parser("positioning", help="pre-registered Binance OI / long-short / taker-volume tests")
+    po.add_argument("--symbols", nargs="+", default=WATCH_SYMBOLS)
+    po.add_argument("--prices", type=Path, default=Path("data-binance"), help="candle root used to price trades")
+    po.add_argument("--check-prices", type=Path, help="second candle root (e.g. Phemex) to re-run BTC/ETH/SOL on")
+    po.add_argument("--start", default="2023-01-01")
+    po.add_argument("--end", default="2026-10-01")
+    po.add_argument("--reports", type=Path, default=Path("reports/positioning"))
 
     sw = sub.add_parser("swing", help="walk-forward swing-trade backtest (minutes to hours) on Phemex candles")
     sw.add_argument("--symbols", nargs="+", default=SYMBOLS)
@@ -168,6 +184,14 @@ def main():
         history.download(a.symbols, a.days, root=a.data)
     elif a.cmd == "download-candles":
         candles.download(a.symbols, a.days, root=a.data, start=a.start, end=a.end, minutes=a.minutes)
+    elif a.cmd == "download-binance-metrics":
+        if a.candles:
+            binance_metrics.download_candles(a.symbols, a.start, a.end, a.data)
+        else:
+            binance_metrics.download(a.symbols, a.start, a.end, a.data)
+    elif a.cmd == "positioning":
+        path = positioning.run(a.symbols, a.prices, a.data, a.reports, a.start, a.end, a.check_prices)
+        print(path.read_text())
     elif a.cmd == "swing":
         path = swing.run(a.symbols, a.bar_minutes, a.cost_bps, a.train_months, a.data, a.reports, a.strategies)
         print(path.read_text())
