@@ -6,7 +6,7 @@ from pathlib import Path
 
 import joblib
 
-from . import backtest, candles, history, ladder, live, pine, predict, swing
+from . import backtest, candles, history, ladder, live, pine, predict, rules, swing
 from .config import COST_BPS, DATA_DIR, DEFAULT_EXCHANGE, SYMBOLS
 
 EXCHANGES = ["phemex", "binance", "binanceus", "coinbase"]
@@ -62,6 +62,17 @@ def main():
     pr.add_argument("--test-start", default="2026-05-01", help="start of the locked test period")
     pr.add_argument("--reports", type=Path, default=Path("reports"))
 
+    rk = sub.add_parser("rank-indicators", help="test each textbook indicator rule alone with the ladder (development data)")
+    rk.add_argument("--symbols", nargs="+", default=SYMBOLS)
+    rk.add_argument("--bar-minutes", type=int, nargs="+", default=[15, 60])
+    rk.add_argument("--leverage", type=float, default=20)
+    rk.add_argument("--stop-margin", type=float, default=0.25)
+    rk.add_argument("--cost-bps", type=float, default=COST_BPS["phemex"])
+    rk.add_argument("--max-hold-hours", type=float, default=72)
+    rk.add_argument("--start", default="2024-10-01")
+    rk.add_argument("--test-start", default="2026-05-01")
+    rk.add_argument("--reports", type=Path, default=Path("reports"))
+
     b = sub.add_parser("backtest", help="walk-forward train/test and write a report")
     b.add_argument("--exchange", choices=EXCHANGES, default=DEFAULT_EXCHANGE)
     b.add_argument("--symbols", nargs="+", default=SYMBOLS)
@@ -113,6 +124,11 @@ def main():
     elif a.cmd == "predict":
         path = predict.run(a.symbols, a.bar_minutes, a.horizons_hours, a.leverage, a.stop_margin, a.cost_bps,
                            a.max_hold_hours, a.first_month, a.test_start, a.data, a.reports)
+        print(path.read_text())
+        print(f"report written to {path}")
+    elif a.cmd == "rank-indicators":
+        path = rules.run(a.symbols, a.bar_minutes, a.leverage, a.stop_margin, a.cost_bps, a.max_hold_hours,
+                         a.start, a.test_start, a.data, a.reports)
         print(path.read_text())
         print(f"report written to {path}")
     elif a.cmd == "backtest":
