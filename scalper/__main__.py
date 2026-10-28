@@ -6,7 +6,7 @@ from pathlib import Path
 
 import joblib
 
-from . import backtest, candles, history, ladder, live, pine, swing
+from . import backtest, candles, history, ladder, live, pine, predict, swing
 from .config import COST_BPS, DATA_DIR, DEFAULT_EXCHANGE, SYMBOLS
 
 EXCHANGES = ["phemex", "binance", "binanceus", "coinbase"]
@@ -49,6 +49,18 @@ def main():
     ld.add_argument("--train-months", type=int, default=6)
     ld.add_argument("--max-hold-hours", type=float, default=72)
     ld.add_argument("--reports", type=Path, default=Path("reports"))
+
+    pr = sub.add_parser("predict", help="multi-indicator direction model traded with the ladder; locked final test")
+    pr.add_argument("--symbols", nargs="+", default=SYMBOLS)
+    pr.add_argument("--bar-minutes", type=int, default=15)
+    pr.add_argument("--horizons-hours", type=float, nargs="+", default=[1, 4, 12])
+    pr.add_argument("--leverage", type=float, default=20)
+    pr.add_argument("--stop-margin", type=float, default=0.25)
+    pr.add_argument("--cost-bps", type=float, default=COST_BPS["phemex"])
+    pr.add_argument("--max-hold-hours", type=float, default=72)
+    pr.add_argument("--first-month", default="2025-04", help="first month with out-of-sample predictions")
+    pr.add_argument("--test-start", default="2026-05-01", help="start of the locked test period")
+    pr.add_argument("--reports", type=Path, default=Path("reports"))
 
     b = sub.add_parser("backtest", help="walk-forward train/test and write a report")
     b.add_argument("--exchange", choices=EXCHANGES, default=DEFAULT_EXCHANGE)
@@ -96,6 +108,11 @@ def main():
     elif a.cmd == "ladder":
         path = ladder.run(a.symbols, a.bar_minutes, a.leverage, a.stop_margin, a.cost_bps, a.train_months,
                           a.max_hold_hours, a.data, a.reports)
+        print(path.read_text())
+        print(f"report written to {path}")
+    elif a.cmd == "predict":
+        path = predict.run(a.symbols, a.bar_minutes, a.horizons_hours, a.leverage, a.stop_margin, a.cost_bps,
+                           a.max_hold_hours, a.first_month, a.test_start, a.data, a.reports)
         print(path.read_text())
         print(f"report written to {path}")
     elif a.cmd == "backtest":
