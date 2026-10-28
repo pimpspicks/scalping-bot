@@ -28,6 +28,17 @@ Fees: Phemex perpetuals are 0.06% taker / 0.01% maker per side at the base tier,
 charge is 12 bps round trip. If you can get filled as a maker, pass `--cost-bps 2`, but limit
 orders don't always fill and the sim doesn't model that.
 
+## Swing trades (minutes to hours)
+
+```bash
+python -m scalper download-candles --days 730    # Phemex 1-minute candles + funding history
+python -m scalper swing --bar-minutes 15          # breakout / trend / mean reversion / model, walk-forward
+```
+
+Each trade exits at an ATR stop, an ATR target or a maximum hold. Settings are re-picked every
+month using only the previous months, so every reported trade is out of sample. On 2024-10 to
+2026-10 data none of these strategies showed an edge that beats fees.
+
 ## TradingView
 
 TradingView can't receive data from a bot, so the bot goes to TradingView instead: it exports a
