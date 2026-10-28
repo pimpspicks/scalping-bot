@@ -92,7 +92,7 @@ def _download_funding(symbol: str, start: datetime, end: datetime, out_dir: Path
     step = 90 * 8 * 3600 * 1000  # 90 funding intervals per request
     while t < stop:
         data = _get("/api-data/public/data/funding-rate-history",
-                    {"symbol": f".{PHEMEX_SYMBOLS[symbol]}FR8H", "start": t, "end": min(t + step, stop), "limit": 100})
+                    {"symbol": f".{PHEMEX_SYMBOLS[symbol].lstrip('.')}FR8H", "start": t, "end": min(t + step, stop), "limit": 100})
         rows += [[r["fundingTime"], r["fundingRate"]] for r in data["rows"]]
         t += step
     df = pd.DataFrame(rows, columns=["ts_ms", "rate"]).apply(pd.to_numeric).drop_duplicates("ts_ms").sort_values("ts_ms")

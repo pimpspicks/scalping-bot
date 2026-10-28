@@ -6,7 +6,7 @@ from pathlib import Path
 
 import joblib
 
-from . import backtest, build_up, candles, history, ladder, live, maker_test, paper_ladder, pine, predict, rules, swing
+from . import backtest, build_up, candles, cross_market, history, ladder, live, maker_test, paper_ladder, pine, predict, rules, swing
 from .config import COST_BPS, DATA_DIR, DEFAULT_EXCHANGE, SYMBOLS
 
 EXCHANGES = ["phemex", "binance", "binanceus", "coinbase"]
@@ -137,6 +137,15 @@ def main():
     p.add_argument("--cost-bps", type=float, help="round-trip fees in bps (default: the venue's base taker rate)")
     p.add_argument("--out", type=Path, default=Path("reports/paper-trades.csv"))
 
+    cm = sub.add_parser("cross-market", help="the paper-bot strategies on Phemex gold, index and stock prices")
+    cm.add_argument("--leverage", type=float, default=20)
+    cm.add_argument("--stop-margin", type=float, default=0.25)
+    cm.add_argument("--maker-bps", type=float, default=1.0)
+    cm.add_argument("--taker-bps", type=float, default=6.0)
+    cm.add_argument("--max-hold-hours", type=float, default=72)
+    cm.add_argument("--wait-bars", type=int, default=4)
+    cm.add_argument("--reports", type=Path, default=Path("reports"))
+
     x = sub.add_parser("export-pine", help="turn a saved logreg/tv model into a TradingView Pine strategy")
     x.add_argument("model", type=Path)
     x.add_argument("--threshold", type=float, default=0.05)
@@ -179,6 +188,11 @@ def main():
                               a.max_hold_hours, a.wait_bars, a.start, a.end, a.data, a.reports, a.label, a.only,
                               rule_set=a.rule_set)
         print(path.read_text()[:3000])
+        print(f"report written to {path}")
+    elif a.cmd == "cross-market":
+        path = cross_market.run(a.data, a.reports, a.leverage, a.stop_margin, a.maker_bps, a.taker_bps,
+                                a.max_hold_hours, a.wait_bars)
+        print(path.read_text())
         print(f"report written to {path}")
     elif a.cmd == "build-up":
         path = build_up.run(a.symbols, a.leverage, a.stop_margin, a.cost_bps, a.max_hold_hours, a.start,

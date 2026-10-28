@@ -9,7 +9,13 @@ SYMBOLS = ["BTC", "ETH", "SOL"]
 
 BINANCE_SYMBOLS = {"BTC": "btcusdt", "ETH": "ethusdt", "SOL": "solusdt"}
 COINBASE_SYMBOLS = {"BTC": "BTC-USD", "ETH": "ETH-USD", "SOL": "SOL-USD"}
-PHEMEX_SYMBOLS = {"BTC": "BTCUSDT", "ETH": "ETHUSDT", "SOL": "SOLUSDT"}  # USDT perpetuals
+PHEMEX_SYMBOLS = {"BTC": "BTCUSDT", "ETH": "ETHUSDT", "SOL": "SOLUSDT",  # USDT perpetuals
+                  # non-crypto perps, for the cross-market check (listed 2022 for PAXG, 2026 for the rest)
+                  "PAXG": "PAXGUSDT", "XAU": "XAUUSDT", "XAG": "XAGUSDT", "NAS100": "NAS100USDT",
+                  "SPYX": "SPYXUSDT", "QQQ": "QQQUSDT", "NVDA": "NVDAUSDT", "TSLA": "TSLAUSDT", "AAPL": "AAPLUSDT"}
+# Phemex index prices (the underlying market, not the thinly traded perp); funding is the perp's.
+PHEMEX_SYMBOLS.update({f"{k}_IDX": "." + PHEMEX_SYMBOLS[k] for k in
+                       ("PAXG", "XAU", "XAG", "NAS100", "SPYX", "QQQ", "NVDA", "TSLA", "AAPL")})
 
 # Round-trip fees in basis points charged on every simulated trade (entry + exit), at each
 # venue's base taker rate, before spread and slippage. Override with --cost-bps to match your tier.
