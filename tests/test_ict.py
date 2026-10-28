@@ -50,3 +50,18 @@ def test_mss_long_after_low_sweep_and_break_of_swing_high():
              [99.5, 101, 99.4, 100.8], [100.8, 102.6, 100.6, 102.4]]                         # closes above 102
     sig = market_structure_shift(_df(rows), sweep_window=3)
     assert sig[-1] == 1 and (sig[:-1] >= 0).all()
+
+
+def test_asia_range_and_previous_day_levels():
+    from scalper.ict import _levels
+    idx = pd.date_range("2026-01-05 00:00", "2026-01-07 00:00", freq="1h", tz="UTC", inclusive="left")
+    df = pd.DataFrame({"high": np.arange(len(idx)) + 1.0, "low": np.arange(len(idx)) - 1.0}, index=idx)
+    df["open"] = df["close"] = np.arange(len(idx), dtype=float)
+    hi, lo = _levels(df, "asia")
+    # 06:00 UTC on Jan 6 is 01:00 NY. The Asian range is the bars opening 20:00-23:00 NY on Jan 5,
+    # i.e. 01:00-04:00 UTC on Jan 6 (positions 25-28).
+    i = idx.get_loc(pd.Timestamp("2026-01-06 06:00", tz="UTC"))
+    assert hi[i] == df.high.iloc[28] and lo[i] == df.low.iloc[25]
+    assert np.isnan(hi[25])  # inside the range itself it isn't known yet
+    phi, plo = _levels(df, "prev_day")
+    assert np.isnan(phi[0]) and np.isfinite(phi[-1])

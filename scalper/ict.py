@@ -79,20 +79,19 @@ def _levels(df: pd.DataFrame, level: str) -> tuple[np.ndarray, np.ndarray]:
     if level.startswith("n"):
         n = int(level[1:])
         return df.high.rolling(n).max().shift().to_numpy(), df.low.rolling(n).min().shift().to_numpy()
-    t = _close_times_ny(df)
+    t = df.index.tz_convert("America/New_York")  # bar open times
     if level == "prev_day":
         day = pd.Series(t.date, index=df.index)
         daily = df.groupby(day.values).agg(high=("high", "max"), low=("low", "min"))
         prev = daily.shift()
         return (day.map(prev.high).to_numpy(dtype=float), day.map(prev.low).to_numpy(dtype=float))
     if level == "asia":
-        # Asian range: 20:00-24:00 New York time, used from midnight until the next evening.
-        minutes = t.hour * 60 + t.minute
-        in_asia = minutes > 20 * 60
+        # Asian range: bars opening 20:00-24:00 New York time, used from midnight until the next evening.
+        in_asia = np.asarray(t.hour >= 20)
         session = pd.Series((t + pd.Timedelta(hours=4)).date, index=df.index)  # 20:00 starts the next session
         rng = df[in_asia].groupby(session[in_asia].values).agg(high=("high", "max"), low=("low", "min"))
-        hi = session.map(rng.high).to_numpy(dtype=float)
-        lo = session.map(rng.low).to_numpy(dtype=float)
+        hi = session.map(rng.high).to_numpy(dtype=float, copy=True)
+        lo = session.map(rng.low).to_numpy(dtype=float, copy=True)
         hi[in_asia], lo[in_asia] = np.nan, np.nan  # range not finished yet
         return hi, lo
     raise ValueError(level)
