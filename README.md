@@ -56,6 +56,16 @@ keeps its start time in `paper/state.json`, so a restart continues the same reco
 orders and needs no API key. Leave it running (it sleeps between candles); the first start downloads
 60 days of candles, which takes a few minutes.
 
+## Recording data nobody keeps history of
+
+```bash
+python -m scalper record-market      # every minute: open interest, funding, predicted funding, basis, quotes, all perps
+python -m scalper collect            # every trade + top of book for BTC/ETH/SOL (order flow)
+```
+
+Phemex has no history of open interest, predicted funding or order flow, so these must be recorded
+going forward. Both run until stopped and need no API key. `record-market` writes about 3 MB a day.
+
 ## TradingView
 
 TradingView can't receive data from a bot, so the bot goes to TradingView instead: it exports a

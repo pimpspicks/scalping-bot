@@ -6,7 +6,7 @@ from pathlib import Path
 
 import joblib
 
-from . import backtest, build_up, candles, history, ladder, live, maker_test, paper_ladder, pine, predict, rules, swing
+from . import backtest, build_up, candles, history, ladder, live, maker_test, paper_ladder, pine, predict, recorder, rules, swing
 from .config import COST_BPS, DATA_DIR, DEFAULT_EXCHANGE, SYMBOLS
 
 EXCHANGES = ["phemex", "binance", "binanceus", "coinbase"]
@@ -119,6 +119,9 @@ def main():
     b.add_argument("--feature-set", choices=["full", "tv"], default="full",
                    help="tv = only chart OHLCV features, so the model can be exported to TradingView")
 
+    rm = sub.add_parser("record-market", help="every minute, save open interest, funding, basis and quotes of all Phemex perps")
+    rm.add_argument("--once", action="store_true", help="take one snapshot and exit")
+
     pl = sub.add_parser("paper-ladder", help="live paper trading of the ladder strategies on Phemex candles (no orders)")
     pl.add_argument("--symbols", nargs="+", default=SYMBOLS)
     pl.add_argument("--out", type=Path, default=Path("paper"), help="folder for state.json, trades.csv, signals.csv")
@@ -196,6 +199,8 @@ def main():
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(pine.export(joblib.load(a.model), a.threshold, a.exchange))
         print(f"wrote {out}; paste it into TradingView's Pine Editor and click 'Add to chart'")
+    elif a.cmd == "record-market":
+        recorder.run(a.data, once=a.once)
     elif a.cmd == "paper-ladder":
         paper_ladder.run(a.symbols, a.data, a.out, a.leverage, a.stop_margin, a.maker_bps, a.taker_bps,
                          a.max_hold_hours, a.wait_bars, a.history_days, a.once)
