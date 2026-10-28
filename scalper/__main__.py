@@ -88,6 +88,7 @@ def main():
     mk.add_argument("--start", default="2024-10-01")
     mk.add_argument("--end", default="2026-11-01")
     mk.add_argument("--label", default="dev")
+    mk.add_argument("--rule-set", choices=["all", "niche"], default="all")
     mk.add_argument("--only", type=Path, help="survivors CSV from an earlier run: test just those rules")
     mk.add_argument("--reports", type=Path, default=Path("reports"))
 
@@ -163,7 +164,8 @@ def main():
         print(f"report written to {path}")
     elif a.cmd == "maker-test":
         path = maker_test.run(a.symbols, a.bar_minutes, a.leverage, a.stop_margin, a.maker_bps, a.taker_bps,
-                              a.max_hold_hours, a.wait_bars, a.start, a.end, a.data, a.reports, a.label, a.only)
+                              a.max_hold_hours, a.wait_bars, a.start, a.end, a.data, a.reports, a.label, a.only,
+                              rule_set=a.rule_set)
         print(path.read_text()[:3000])
         print(f"report written to {path}")
     elif a.cmd == "build-up":

@@ -4,6 +4,8 @@ Entries and take profits are limit orders that only fill when price trades throu
 stops and time exits are market orders (taker fee). Signals from 1 h / 4 h charts are placed on the
 15-minute bar that closes with them, and every trade is simulated on 15-minute candles.
 
+`rule_set` "all" = the classic and new sets, "niche" = rules3.
+
 `run` ranks rules on one period and writes the survivors (positive ROI, t >= `min_t`, positive on
 every coin) to `survivors.csv`. Passing `only=` that file runs just those rules, which is how the
 survivors are checked once on the locked holdout data.
@@ -17,6 +19,7 @@ import pandas as pd
 from .ladder import simulate_ladder_limit
 from .rules import _stats, rule_signals
 from .rules2 import new_rule_signals
+from .rules3 import niche_rule_signals
 from .swing import make_bars
 
 log = logging.getLogger(__name__)
@@ -33,7 +36,8 @@ def to_15m(sig: np.ndarray, index: pd.DatetimeIndex, bar_min: int, idx15: pd.Dat
 
 
 def run(symbols, bar_mins, lev, stop_margin, maker_bps, taker_bps, max_hold_h, wait_bars, start, end,
-        root: Path, report_dir: Path, label: str, only: Path | None = None, min_t: float = 2.0) -> Path:
+        root: Path, report_dir: Path, label: str, only: Path | None = None, min_t: float = 2.0,
+        rule_set: str = "all") -> Path:
     lo, hi = pd.Timestamp(start, tz="UTC"), pd.Timestamp(end, tz="UTC")
     keep = None
     if only is not None:
@@ -45,7 +49,8 @@ def run(symbols, bar_mins, lev, stop_margin, maker_bps, taker_bps, max_hold_h, w
     for bm in bar_mins:
         bars = b15 if bm == 15 else {s: make_bars(s, bm, root) for s in symbols}
         for s, b in bars.items():
-            sigs = {**rule_signals(b.df, b.funding_cum), **new_rule_signals(s, bars)}
+            sigs = (niche_rule_signals(s, bars) if rule_set == "niche"
+                    else {**rule_signals(b.df, b.funding_cum), **new_rule_signals(s, bars)})
             in_period = np.asarray((b.df.index >= lo) & (b.df.index < hi))
             for (fam, name), sig in sigs.items():
                 for way, d in (("as rule", 1), ("fade", -1)):
