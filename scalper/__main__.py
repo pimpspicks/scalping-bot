@@ -6,7 +6,7 @@ from pathlib import Path
 
 import joblib
 
-from . import backtest, candles, history, ladder, live, pine, predict, rules, swing
+from . import backtest, build_up, candles, history, ladder, live, pine, predict, rules, swing
 from .config import COST_BPS, DATA_DIR, DEFAULT_EXCHANGE, SYMBOLS
 
 EXCHANGES = ["phemex", "binance", "binanceus", "coinbase"]
@@ -73,6 +73,18 @@ def main():
     rk.add_argument("--test-start", default="2026-05-01")
     rk.add_argument("--reports", type=Path, default=Path("reports"))
 
+    bu = sub.add_parser("build-up", help="start from the 1h Ichimoku cloud break and add pieces one at a time")
+    bu.add_argument("--symbols", nargs="+", default=SYMBOLS)
+    bu.add_argument("--leverage", type=float, default=20)
+    bu.add_argument("--stop-margin", type=float, default=0.25)
+    bu.add_argument("--cost-bps", type=float, default=COST_BPS["phemex"])
+    bu.add_argument("--max-hold-hours", type=float, default=72)
+    bu.add_argument("--start", default="2024-10-01")
+    bu.add_argument("--test-start", default="2026-05-01")
+    bu.add_argument("--min-trades", type=int, default=150)
+    bu.add_argument("--min-gain", type=float, default=0.1, help="ROI points a piece must add to be kept")
+    bu.add_argument("--reports", type=Path, default=Path("reports"))
+
     b = sub.add_parser("backtest", help="walk-forward train/test and write a report")
     b.add_argument("--exchange", choices=EXCHANGES, default=DEFAULT_EXCHANGE)
     b.add_argument("--symbols", nargs="+", default=SYMBOLS)
@@ -129,6 +141,11 @@ def main():
     elif a.cmd == "rank-indicators":
         path = rules.run(a.symbols, a.bar_minutes, a.leverage, a.stop_margin, a.cost_bps, a.max_hold_hours,
                          a.start, a.test_start, a.data, a.reports)
+        print(path.read_text())
+        print(f"report written to {path}")
+    elif a.cmd == "build-up":
+        path = build_up.run(a.symbols, a.leverage, a.stop_margin, a.cost_bps, a.max_hold_hours, a.start,
+                            a.test_start, a.min_trades, a.min_gain, a.data, a.reports)
         print(path.read_text())
         print(f"report written to {path}")
     elif a.cmd == "backtest":
