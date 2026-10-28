@@ -28,6 +28,48 @@ Fees: Phemex perpetuals are 0.06% taker / 0.01% maker per side at the base tier,
 charge is 12 bps round trip. If you can get filled as a maker, pass `--cost-bps 2`, but limit
 orders don't always fill and the sim doesn't model that.
 
+## Swing trades (minutes to hours)
+
+```bash
+python -m scalper download-candles --days 730    # Phemex 1-minute candles + funding history
+python -m scalper swing --bar-minutes 15          # breakout / trend / mean reversion / model, walk-forward
+python -m scalper swing --strategies ict --bar-minutes 5   # ICT: FVG, liquidity sweeps, MSS, silver bullet
+```
+
+Each trade exits at an ATR stop, an ATR target or a maximum hold. Settings are re-picked every
+month using only the previous months, so every reported trade is out of sample. On 2024-10 to
+2026-10 data none of these strategies (ICT included) showed an edge that beats fees.
+
+## Paper bot (20x ladder, no orders)
+
+```bash
+python -m scalper maker-test                      # every rule with limit entries / take profits, market stops
+python -m scalper maker-test --rule-set niche     # niche ideas (CME gap, expiry Friday, Hurst switch, ...)
+python -m scalper paper-ladder                    # live paper trading on Phemex candles, updates every 15 min
+```
+
+`paper-ladder` runs three strategies (4h EMA 21/50 cross, 1h Friday post-expiry range break, 15m
+Donchian breakout when the Hurst exponent says trending) on BTC, ETH and SOL. Each update downloads
+the new 1-minute candles and replays them through the same simulation as `maker-test`, so paper
+results match the backtest trade for trade. It writes `paper/trades.csv` and `paper/signals.csv` and
+keeps its start time in `paper/state.json`, so a restart continues the same record. It never sends
+orders and needs no API key. Leave it running (it sleeps between candles); the first start downloads
+60 days of candles, which takes a few minutes.
+
+## Recording data nobody keeps history of
+
+```bash
+./record.sh                          # or record.bat on Windows: record-all, restarted after any crash
+python -m scalper record-all         # record-market + record-flow together
+python -m scalper record-market      # every minute: open interest, funding, predicted funding, basis, quotes, all perps
+python -m scalper record-flow        # 10-second taker buy/sell volume + book depth for 20 perps
+python -m scalper collect            # every trade + top of book (100 ms) for BTC/ETH/SOL, much bigger
+```
+
+Phemex has no history of open interest, predicted funding or order flow, so these must be recorded
+going forward. They run until stopped and need no API key. `record-all` writes about 40 MB a day
+(`data/market/` and `data/flow/`).
+
 ## TradingView
 
 TradingView can't receive data from a bot, so the bot goes to TradingView instead: it exports a

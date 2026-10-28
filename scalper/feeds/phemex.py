@@ -15,7 +15,7 @@ from ..config import PHEMEX_SYMBOLS
 
 log = logging.getLogger(__name__)
 
-URL = "wss://phemex.com/ws"
+URL = "wss://ws.phemex.com"  # the older wss://phemex.com/ws now answers 410 Gone
 
 
 def _apply(levels: dict[float, float], updates):

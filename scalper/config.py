@@ -6,6 +6,9 @@ MODEL_DIR = Path("models")
 
 # Canonical symbols used everywhere in the code; each feed maps them to its own names.
 SYMBOLS = ["BTC", "ETH", "SOL"]
+# The 20 liquid Phemex perps used for coin-vs-coin tests and data recording (u1000PEPE = 1000PEPEUSDT).
+WATCH_SYMBOLS = SYMBOLS + ["BNB", "XRP", "DOGE", "LINK", "NEAR", "ARB", "u1000PEPE", "LTC", "BCH", "UNI", "XLM",
+                           "AAVE", "INJ", "ADA", "AVAX", "DOT", "ATOM"]
 
 BINANCE_SYMBOLS = {"BTC": "btcusdt", "ETH": "ethusdt", "SOL": "solusdt"}
 COINBASE_SYMBOLS = {"BTC": "BTC-USD", "ETH": "ETH-USD", "SOL": "SOL-USD"}
