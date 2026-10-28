@@ -33,11 +33,12 @@ orders don't always fill and the sim doesn't model that.
 ```bash
 python -m scalper download-candles --days 730    # Phemex 1-minute candles + funding history
 python -m scalper swing --bar-minutes 15          # breakout / trend / mean reversion / model, walk-forward
+python -m scalper swing --strategies ict --bar-minutes 5   # ICT: FVG, liquidity sweeps, MSS, silver bullet
 ```
 
 Each trade exits at an ATR stop, an ATR target or a maximum hold. Settings are re-picked every
 month using only the previous months, so every reported trade is out of sample. On 2024-10 to
-2026-10 data none of these strategies showed an edge that beats fees.
+2026-10 data none of these strategies (ICT included) showed an edge that beats fees.
 
 ## TradingView
 
