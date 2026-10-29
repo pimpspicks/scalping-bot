@@ -117,7 +117,7 @@ def signals(cn: Coin, x: float, setup: str, oi: np.ndarray | None = None):
     return sig, stop, tgt
 
 
-def simulate(cn: Coin, sig, stop, tgt, target: str, hold: int, period) -> pd.DataFrame:
+def simulate(cn: Coin, sig, stop, tgt, target: str, hold: int | None, period) -> pd.DataFrame:
     inside = np.flatnonzero((cn.t_close >= period[0]) & (cn.t_close < period[1]))
     if not len(inside):
         return pd.DataFrame()
@@ -134,14 +134,20 @@ def simulate(cn: Coin, sig, stop, tgt, target: str, hold: int, period) -> pd.Dat
         move = d * (tgt[i] - entry) if target == "structure" else 2 * dist
         if not np.isfinite(move) or move < dist:
             continue
-        last = min(e + hold, end) - 1
-        x_lo = cn.l[e:last + 1] if d > 0 else -cn.h[e:last + 1]
-        x_hi = cn.h[e:last + 1] if d > 0 else -cn.l[e:last + 1]
         x_stop, x_tgt = d * entry - dist, d * entry + move
-        s = np.flatnonzero(x_lo <= x_stop)
-        t = np.flatnonzero(x_hi >= x_tgt)
-        s0 = s[0] if len(s) else hold + 1
-        t0 = t[0] if len(t) else hold + 1
+        limit = min(e + hold, end) if hold else end  # no hold limit: until stop, target or the period's end
+        w = 256
+        while True:
+            last = min(e + w, limit) - 1
+            x_lo = cn.l[e:last + 1] if d > 0 else -cn.h[e:last + 1]
+            x_hi = cn.h[e:last + 1] if d > 0 else -cn.l[e:last + 1]
+            s = np.flatnonzero(x_lo <= x_stop)
+            t = np.flatnonzero(x_hi >= x_tgt)
+            if len(s) or len(t) or last == limit - 1:
+                break
+            w *= 4
+        s0 = s[0] if len(s) else np.inf
+        t0 = t[0] if len(t) else np.inf
         if len(s) and s0 <= t0:
             k = int(s0)
             x_exit, kind = (min(d * cn.o[e + k], x_stop) if k > 0 else x_stop), "stop"
@@ -167,7 +173,7 @@ def _label(s, tf, x, t):
     return f"{s}, {tfs} swings {x:.0f} ATR, target {t}"
 
 
-def all_runs(coins, period):
+def all_runs(coins, period, cap=True):
     out = {}
     for tf in TFS:
         for s in SETUPS:
@@ -176,7 +182,7 @@ def all_runs(coins, period):
                 for t in TARGETS:
                     trades = []
                     for sym, cn in coins[tf].items():
-                        tr = simulate(cn, *sigs[sym], t, TFS[tf], period)
+                        tr = simulate(cn, *sigs[sym], t, TFS[tf] if cap else None, period)
                         if len(tr):
                             trades.append(tr.assign(coin=sym))
                     out[(s, tf, x, t)] = pd.concat(trades, ignore_index=True) if trades else pd.DataFrame()
@@ -184,7 +190,8 @@ def all_runs(coins, period):
     return out
 
 
-def run(symbols, root: Path, report_dir: Path) -> Path:
+def run(symbols, root: Path, report_dir: Path, cap=True) -> Path:
+    """cap=False: no time limit, trades end only at the stop or target."""
     report_dir.mkdir(parents=True, exist_ok=True)
     coins = {tf: {} for tf in TFS}
     for sym in symbols:
@@ -193,9 +200,9 @@ def run(symbols, root: Path, report_dir: Path) -> Path:
                 coins[tf][sym] = load_coin(sym, tf, root)
             except SystemExit:
                 pass
-    design = all_runs(coins, DESIGN)
+    design = all_runs(coins, DESIGN, cap)
     dsc = {g: _row(t, DESIGN) for g, t in design.items()}
-    exam = all_runs(coins, EXAM)
+    exam = all_runs(coins, EXAM, cap)
     esc = {g: _row(t, EXAM) for g, t in exam.items()}
     chosen = {}
     for grp in ("same-day", "multi-day"):
@@ -266,3 +273,139 @@ def oi_side_check(symbols, root: Path, metrics_root: Path) -> pd.DataFrame:
                         tr = pd.concat(v, ignore_index=True) if v else pd.DataFrame()
                         rows.append({"Version": _label(s, tf, x, t), "OI filter": k, **_row(tr, DESIGN)})
     return pd.DataFrame(rows)
+
+
+# ---------- follow-up: no time limit, and the higher timeframe's move count as a filter ----------
+
+HTF = {15: 1440, 30: 1440, 60: 1440, 120: 1440, 240: 1440}  # trading chart -> the chart he takes his bias from
+
+
+def move_counts(cn: Coin, x: float = 3.0) -> pd.DataFrame:
+    """Completed moves of the current trend on this chart, known from each swing's confirming bar: `up` counts
+    consecutive higher highs, `dn` consecutive lower lows (a break the other way resets the count)."""
+    piv = zigzag(cn.c, cn.atr, x)
+    up = dn = 0
+    last = {1: None, -1: None}
+    rows = []
+    for p, kind, ci in piv:
+        prev = last[kind]
+        if prev is not None:
+            if kind == 1:
+                up = up + 1 if cn.c[p] > prev else 0
+                if cn.c[p] > prev:
+                    dn = 0
+            else:
+                dn = dn + 1 if cn.c[p] < prev else 0
+                if cn.c[p] < prev:
+                    up = 0
+        last[kind] = cn.c[p]
+        rows.append((cn.t_close[ci], up, dn))
+    return pd.DataFrame(rows, columns=["t", "up", "dn"]).drop_duplicates("t", keep="last").set_index("t")
+
+
+def htf_filter(sig: np.ndarray, setup: str, up: np.ndarray, dn: np.ndarray) -> np.ndarray:
+    """A/B: trade with the bigger chart's trend while it has done 1-2 moves. C: fade only when the bigger chart
+    has done 3+ moves the same way, or is already trending the other way."""
+    if setup.startswith("C"):
+        ok_long = (dn >= 3) | ((up >= 1) & (dn == 0))
+        ok_short = (up >= 3) | ((dn >= 1) & (up == 0))
+    else:
+        ok_long = (up >= 1) & (up <= 2) & (dn == 0)
+        ok_short = (dn >= 1) & (dn <= 2) & (up == 0)
+    return np.where(((sig > 0) & ok_long) | ((sig < 0) & ok_short), sig, 0)
+
+
+TFS2 = (15, 30, 60, 120, 240)
+GROUP2 = {**GROUP, 60: "same-day"}
+GRID2 = [(s, tf, x, t, f) for s in SETUPS for tf in TFS2 for x in XS for t in TARGETS for f in (False, True)]
+
+
+def _label2(s, tf, x, t, f):
+    return _label(s, tf, x, t) + (", only with the daily bias" if f else "")
+
+
+def all_runs2(coins, htf, period):
+    out = {}
+    for tf in TFS2:
+        for s in SETUPS:
+            for x in XS:
+                sigs = {}
+                for sym, cn in coins[tf].items():
+                    sig, st, tg = signals(cn, x, s)
+                    mc = htf[HTF[tf]][sym].reindex(cn.t_close, method="ffill").fillna(0)
+                    sigs[sym] = {False: (sig, st, tg), True: (htf_filter(sig, s, mc.up.to_numpy(), mc.dn.to_numpy()), st, tg)}
+                for t in TARGETS:
+                    for f in (False, True):
+                        trades = []
+                        for sym, cn in coins[tf].items():
+                            tr = simulate(cn, *sigs[sym][f], t, None, period)
+                            if len(tr):
+                                trades.append(tr.assign(coin=sym))
+                        out[(s, tf, x, t, f)] = pd.concat(trades, ignore_index=True) if trades else pd.DataFrame()
+        log.info("done %sm", tf)
+    return out
+
+
+def run2(symbols, root: Path, report_dir: Path) -> Path:
+    report_dir.mkdir(parents=True, exist_ok=True)
+    coins = {tf: {} for tf in TFS2}
+    htf = {1440: {}}
+    for sym in symbols:
+        try:
+            for tf in TFS2:
+                coins[tf][sym] = load_coin(sym, tf, root)
+            for tf in htf:
+                htf[tf][sym] = move_counts(load_coin(sym, tf, root))
+        except SystemExit:
+            pass
+    design = all_runs2(coins, htf, DESIGN)
+    dsc = {g: _row(t, DESIGN) for g, t in design.items()}
+    exam = all_runs2(coins, htf, EXAM)
+    esc = {g: _row(t, EXAM) for g, t in exam.items()}
+    chosen = {}
+    for grp in ("same-day", "multi-day"):
+        best = None
+        for g in GRID2:
+            s, tf, x, t, f = g
+            if GROUP2[tf] != grp:
+                continue
+            nbs = [(s, tf, x, tt, f) for tt in TARGETS if tt != t] + [(s, tf, xx, t, f) for xx in XS if abs(xx - x) == 1]
+            ok = dsc[g]["Years positive"] >= 3 and all(dsc[nb]["Sharpe"] > 0 for nb in nbs)
+            if ok and (best is None or dsc[g]["Sharpe"] > dsc[best]["Sharpe"]):
+                best = g
+        chosen[grp] = best
+        log.info("chosen %s: %s", grp, best)
+
+    def fmt(d):
+        return {k: (round(v, 2) if isinstance(v, float) else v) for k, v in d.items()}
+
+    table = pd.DataFrame([{"Version": _label2(*g), "Setup": g[0], "Timeframe": g[1], "Group": GROUP2[g[1]], "X": g[2],
+                           "Target": g[3], "Bigger-chart filter": g[4],
+                           **{f"Design {k}": v for k, v in fmt(dsc[g]).items()},
+                           **{f"Exam {k}": v for k, v in fmt(esc[g]).items()}} for g in GRID2])
+    for p, res in (("Design", design), ("Exam", exam)):
+        table[f"{p} Avg hours held"] = [round(res[g].hours.mean(), 1) if len(res[g]) else np.nan for g in GRID2]
+        table[f"{p} Median hours held"] = [round(res[g].hours.median(), 1) if len(res[g]) else np.nan for g in GRID2]
+    table = table.sort_values("Design Sharpe", ascending=False)
+    table.to_csv(report_dir / "all-versions.csv", index=False)
+    g1 = ["Design Avg gross (bps)", "Design Avg net per trade (bps of price)", "Exam Avg gross (bps)",
+          "Exam Avg net per trade (bps of price)", "Design Median hours held"]
+    cols = ["Version", "Design Trades", "Design Win %", "Design Avg net per trade (bps of price)", "Design Sharpe",
+            "Design Return/yr %", "Design Max DD %", "Design By year %", "Design Median hours held",
+            "Exam Sharpe", "Exam Return/yr %", "Exam By year %"]
+    lines = ["# Three-move method, no time limit, with and without the daily chart's bias: results\n"]
+    for grp, best in chosen.items():
+        lines.append(f"**Chosen, {grp}:** {_label2(*best) if best else 'none eligible'}\n")
+        if best:
+            lines += [pd.DataFrame([{"Period": "Design 2023-26", **fmt(dsc[best])},
+                                    {"Period": "Exam 2020-22", **fmt(esc[best])}]).to_markdown(index=False), ""]
+    pos = table.groupby(["Group", "Bigger-chart filter"]).apply(
+        lambda d: pd.Series({"Versions": len(d), "Design Sharpe > 0": (d["Design Sharpe"] > 0).sum(),
+                             "Exam Sharpe > 0": (d["Exam Sharpe"] > 0).sum()}))
+    lines += ["\n## Versions with Sharpe > 0\n", pos.to_markdown(),
+              "\n## Average per trade by setup, group and filter (bps of price)\n",
+              table.groupby(["Group", "Setup", "Bigger-chart filter"])[g1].mean().round(1).to_markdown(),
+              "\n## Top 20 by design Sharpe\n", table.head(20)[cols].to_markdown(index=False)]
+    path = report_dir / "results.md"
+    path.write_text("\n".join(lines) + "\n")
+    return path
