@@ -117,9 +117,9 @@ def simulate(cn: Coin, sig: np.ndarray, k_stop, r_target, period, stop_level: np
         funding = d * (cn.fcum[min(j + 1, len(cn.fcum) - 1)] - cn.fcum[e])
         net = gross - 2 * COST - funding
         size = min(RISK / (dist / entry), MAX_SIZE)
-        rows.append((cn.t_close[j], d, kind, gross, net, size, move / entry))
+        rows.append((cn.t_close[j], d, kind, gross, net, size, move / entry, cn.t_close[i]))
         free = j
-    return pd.DataFrame(rows, columns=["exit_time", "dir", "exit", "gross", "net", "size", "target_move"])
+    return pd.DataFrame(rows, columns=["exit_time", "dir", "exit", "gross", "net", "size", "target_move", "signal_time"])
 
 
 def ranking_filter(coins: dict[str, Coin]) -> dict[str, np.ndarray]:
@@ -149,7 +149,8 @@ def _label(e, f, k, r):
     return f"{e}{' + ranking' if f else ''}, {stop}, {tgt}"
 
 
-def all_runs(coins, filt, period):
+def all_runs(coins, filt, period, allow=None):
+    """allow: optional {coin: bool array}; signals on bars marked False are dropped."""
     ents = {s: entries(cn) for s, cn in coins.items()}
     out = {}
     for e, f, k, r in GRID:
@@ -158,6 +159,8 @@ def all_runs(coins, filt, period):
             sig = ents[s][e]
             if f:
                 sig = np.where(sig == filt[s], sig, 0)
+            if allow is not None:
+                sig = np.where(allow[s], sig, 0)
             t = simulate(cn, sig, k, r, period)
             if len(t):
                 trades.append(t.assign(coin=s))

@@ -81,7 +81,8 @@ def _label(e, s, f, x):
     return f"{s}: {e}{' + ranking' if f else ''}, {x}"
 
 
-def all_runs(coins, filt, period):
+def all_runs(coins, filt, period, allow=None):
+    """allow: optional {coin: bool array}; signals on bars marked False are dropped."""
     prep = {}
     for sym, cn in coins.items():
         E = base_entries(cn)
@@ -105,6 +106,8 @@ def all_runs(coins, filt, period):
             sig = prep[sym][0][s][e]
             if f:
                 sig = np.where(sig == filt[sym], sig, 0)
+            if allow is not None:
+                sig = np.where(allow[sym], sig, 0)
             t = simulate(cn, sig, k, r, period, prep[sym][1] if e == "Order block" else None)
             if len(t):
                 trades.append(t.assign(coin=sym))
