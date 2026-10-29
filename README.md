@@ -56,6 +56,20 @@ keeps its start time in `paper/state.json`, so a restart continues the same reco
 orders and needs no API key. Leave it running (it sleeps between candles); the first start downloads
 60 days of candles, which takes a few minutes.
 
+## Paper bot: three-move setups (2h, no orders)
+
+```bash
+python -m scalper paper-3move          # or double-click paper3.bat (restarts after any crash)
+```
+
+Runs the two setups that passed testing (reports-2026-10-29-efficiency/) on 20 Phemex perps: the move-1
+pullback (2h, zigzag 2 ATR, only with the stablecoin-supply signal) and the move-3 stochastic fade (2h, zigzag
+3 ATR, only with the USDT dominance signal). Limit entry at the signal candle's close (good for 2 candles), 2R
+limit target, market stop, 0.5% account risk per trade (`--risk 1` for 1%). Every 2 hours it downloads new
+15-minute candles into `data-3move/` (plus Coin Metrics / DefiLlama money-flow data every 6 hours) and replays
+everything since its first start, so the record matches the backtest trade for trade. Output:
+`paper-3move/trades.csv` (open trades show entry, stop and target). Needs no API key and never sends orders.
+
 ## Recording data nobody keeps history of
 
 ```bash

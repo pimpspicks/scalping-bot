@@ -27,7 +27,12 @@ PERIODS = {"2020-22": ("2020-01-01", "2023-01-01"), "2023-26": ("2023-01-01", "2
 def move1_trades(cn, bias, how: str, risk=0.005, period=FULL) -> pd.DataFrame:
     """Setup A, 2h, 2 ATR swings, stop 0.1 ATR beyond the pullback low, 2R target, stablecoin filter."""
     sig, stop = a_signals(cn, 2.0, "any", 0.1)
-    sig = np.where(sig * bias > 0, sig, 0)
+    return trades_2r(cn, np.where(sig * bias > 0, sig, 0), stop, how, risk, period)
+
+
+def trades_2r(cn, sig, stop, how: str, risk=0.005, period=FULL) -> pd.DataFrame:
+    """Trades for entry signals with a stop price each and a 2R target. A trade still running at the period's end
+    is closed at the last close with exit "open at end"."""
     inside = np.flatnonzero((cn.t_close >= period[0]) & (cn.t_close < period[1]))
     i0, end = inside[0], inside[-1] + 1
     rows, free = [], 0
@@ -77,9 +82,11 @@ def move1_trades(cn, bias, how: str, risk=0.005, period=FULL) -> pd.DataFrame:
         funding = d * (cn.fcum[min(k_exit + 1, len(cn.fcum) - 1)] - cn.fcum[e])
         net = gross - fee_in - fee_out - funding
         size = min(risk / (dist / entry), 10.0)
-        rows.append((cn.t_close[i], cn.t_close[k_exit], d, kind, gross, net, size, 2 * dist / entry))
+        rows.append((cn.t_close[i], cn.t_close[k_exit], d, kind, gross, net, size, 2 * dist / entry,
+                     cn.t_close[e] if start > e else cn.t_close[i], entry, stop[i], entry + 2 * d * dist))
         free = k_exit
-    return pd.DataFrame(rows, columns=["entry_time", "exit_time", "dir", "exit", "gross", "net", "size", "target_move"])
+    return pd.DataFrame(rows, columns=["entry_time", "exit_time", "dir", "exit", "gross", "net", "size", "target_move",
+                                       "fill_time", "entry_price", "stop_price", "target_price"])
 
 
 def fade_trades(cn, bias, risk=0.005, period=FULL) -> pd.DataFrame:

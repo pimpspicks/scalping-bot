@@ -7,7 +7,7 @@ from pathlib import Path
 
 import joblib
 
-from . import backtest, binance_metrics, build_up, candles, flow, history, ladder, live, maker_test, paper_ladder, pine, positioning, predict, recorder, rules, swing
+from . import backtest, binance_metrics, build_up, candles, flow, history, ladder, live, maker_test, paper_3move, paper_ladder, pine, positioning, predict, recorder, rules, swing
 from .config import COST_BPS, DATA_DIR, DEFAULT_EXCHANGE, SYMBOLS, WATCH_SYMBOLS
 
 EXCHANGES = ["phemex", "binance", "binanceus", "coinbase"]
@@ -159,6 +159,13 @@ def main():
     pl.add_argument("--history-days", type=int, default=60)
     pl.add_argument("--once", action="store_true", help="update once and exit")
 
+    p3 = sub.add_parser("paper-3move", help="live paper trading of the three-move setups on Phemex 2h candles (no orders)")
+    p3.add_argument("--symbols", nargs="+", default=WATCH_SYMBOLS)
+    p3.add_argument("--candles", type=Path, default=Path("data-3move"), help="folder for candles and money-flow data")
+    p3.add_argument("--out", type=Path, default=Path("paper-3move"), help="folder for state.json and trades.csv")
+    p3.add_argument("--risk", type=float, default=0.5, help="account %% risked per trade")
+    p3.add_argument("--once", action="store_true", help="update once and exit")
+
     p = sub.add_parser("paper", help="live paper trading with saved models (no orders are sent)")
     p.add_argument("--exchange", choices=EXCHANGES, default=DEFAULT_EXCHANGE)
     p.add_argument("--models", type=Path, nargs="+", required=True)
@@ -244,6 +251,8 @@ def main():
     elif a.cmd == "paper-ladder":
         paper_ladder.run(a.symbols, a.data, a.out, a.leverage, a.stop_margin, a.maker_bps, a.taker_bps,
                          a.max_hold_hours, a.wait_bars, a.history_days, a.once)
+    elif a.cmd == "paper-3move":
+        paper_3move.run(a.symbols, a.candles, a.out, a.risk / 100, once=a.once)
     elif a.cmd == "paper":
         asyncio.run(live.PaperTrader(a.models, a.threshold, a.cost_bps, a.out).run(a.exchange))
 
