@@ -64,9 +64,10 @@ def entries(cn: Coin) -> dict[str, np.ndarray]:
     return {k: np.asarray(v, int) for k, v in E.items()}
 
 
-def simulate(cn: Coin, sig: np.ndarray, k_stop, r_target, period) -> pd.DataFrame:
+def simulate(cn: Coin, sig: np.ndarray, k_stop, r_target, period, stop_level: np.ndarray | None = None) -> pd.DataFrame:
     """k_stop: ATR multiple, or "swing" (beyond the last 8 bars' extreme + 0.1 ATR). r_target: multiple of the
-    stop distance, or "level" (the last 24 hours' high / low, taken only if at least 1x the stop away)."""
+    stop distance, or "level" (the last 24 hours' high / low, taken only if at least 1x the stop away).
+    stop_level: with "swing", a setup's own stop price per signal bar (NaN: use the 8-bar swing)."""
     if k_stop == "swing":
         lo8, hi8 = pd.Series(cn.l).rolling(8).min().to_numpy(), pd.Series(cn.h).rolling(8).max().to_numpy()
     if r_target == "level":
@@ -82,7 +83,8 @@ def simulate(cn: Coin, sig: np.ndarray, k_stop, r_target, period) -> pd.DataFram
         d, e = int(sig[i]), i + 1
         entry = cn.o[e]
         if k_stop == "swing":
-            dist = (entry - lo8[i] if d > 0 else hi8[i] - entry) + 0.1 * cn.atr[i]
+            lvl = stop_level[i] if stop_level is not None and np.isfinite(stop_level[i]) else (lo8[i] if d > 0 else hi8[i])
+            dist = (entry - lvl if d > 0 else lvl - entry) + 0.1 * cn.atr[i]
         else:
             dist = k_stop * cn.atr[i]
         if not np.isfinite(dist) or dist <= 0:
